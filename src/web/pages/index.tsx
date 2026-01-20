@@ -1,72 +1,79 @@
-// TODO(agent): This is a temporary "under construction" page.
-// Replace the entire contents of this file with the actual index page implementation
-// as instructed by the user. Delete this comment and the placeholder UI below.
-
-import { useState, useEffect } from "react";
-
-const AGENT_THOUGHTS = [
-	"Crafting the perfect landing page",
-	"Fine-tuning the color palette",
-	"Making buttons actually clickable",
-	"Ensuring it works on your phone too",
-	"Adding just the right amount of whitespace",
-	"Teaching forms to be polite",
-	"Making the logo pixel-perfect",
-	"Optimizing for speed (patience, ironic)",
-	"Writing code that future-me won't hate",
-	"Building something worth the wait",
-];
+import { useState, useEffect, useCallback } from 'react';
+import { Shift, ViewType } from '@/lib/types';
+import { getShifts, addShift, updateShift, deleteShift } from '@/lib/store';
+import { Sidebar } from '@/components/layout/sidebar';
+import { DashboardView } from '@/components/views/dashboard-view';
+import { ShiftsView } from '@/components/views/shifts-view';
+import { CalendarView } from '@/components/views/calendar-view';
+import { FinancialView } from '@/components/views/financial-view';
 
 function Index() {
-	const [thoughtIndex, setThoughtIndex] = useState(0);
+  const [currentView, setCurrentView] = useState<ViewType>('dashboard');
+  const [shifts, setShifts] = useState<Shift[]>([]);
 
-	useEffect(() => {
-		const interval = setInterval(() => {
-			setThoughtIndex((prev) => (prev + 1) % AGENT_THOUGHTS.length);
-		}, 3000);
-		return () => clearInterval(interval);
-	}, []);
+  useEffect(() => {
+    setShifts(getShifts());
+  }, []);
 
-	return (
-		<div className="min-h-screen bg-[#f5f5f5] flex flex-col items-center justify-center p-8">
+  const handleAddShift = useCallback((shift: Shift) => {
+    addShift(shift);
+    setShifts(getShifts());
+  }, []);
 
-			<h1 className="text-[clamp(2.5rem,10vw,6rem)] font-black tracking-[-0.03em] text-black leading-none mb-10 text-center">
-				Under
-				<br />
-				Construction
-			</h1>
+  const handleUpdateShift = useCallback((id: string, updates: Partial<Shift>) => {
+    updateShift(id, updates);
+    setShifts(getShifts());
+  }, []);
 
-			{/* Agent thought with shimmer */}
-			<div className="h-8 flex items-center justify-center">
-				<p className="text-base md:text-lg shimmer-text italic">
-					"{AGENT_THOUGHTS[thoughtIndex]}"
-				</p>
-			</div>
+  const handleDeleteShift = useCallback((id: string) => {
+    deleteShift(id);
+    setShifts(getShifts());
+  }, []);
 
-			<style>{`
-				.shimmer-text {
-					background: linear-gradient(
-						90deg,
-						#737373 0%,
-						#737373 40%,
-						#d4d4d4 50%,
-						#737373 60%,
-						#737373 100%
-					);
-					background-size: 200% 100%;
-					-webkit-background-clip: text;
-					background-clip: text;
-					-webkit-text-fill-color: transparent;
-					animation: shimmer 2s ease-in-out infinite;
-				}
+  const renderView = () => {
+    switch (currentView) {
+      case 'dashboard':
+        return <DashboardView shifts={shifts} />;
+      case 'shifts':
+        return (
+          <ShiftsView
+            shifts={shifts}
+            onAddShift={handleAddShift}
+            onUpdateShift={handleUpdateShift}
+            onDeleteShift={handleDeleteShift}
+          />
+        );
+      case 'calendar':
+        return (
+          <CalendarView
+            shifts={shifts}
+            onAddShift={handleAddShift}
+            onUpdateShift={handleUpdateShift}
+          />
+        );
+      case 'financial':
+        return (
+          <FinancialView
+            shifts={shifts}
+            onUpdateShift={handleUpdateShift}
+          />
+        );
+      default:
+        return <DashboardView shifts={shifts} />;
+    }
+  };
 
-				@keyframes shimmer {
-					0% { background-position: 100% 0; }
-					100% { background-position: -100% 0; }
-				}
-			`}</style>
-		</div>
-	);
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 flex">
+      <Sidebar currentView={currentView} onViewChange={setCurrentView} />
+      
+      <main className="flex-1 p-4 lg:p-8 overflow-auto">
+        <div className="max-w-7xl mx-auto pt-14 lg:pt-0">
+          {renderView()}
+        </div>
+      </main>
+    </div>
+  );
 }
 
 export default Index;
