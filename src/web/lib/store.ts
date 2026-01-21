@@ -33,6 +33,12 @@ export const addShift = (shift: Shift): void => {
   saveData(data);
 };
 
+export const addMultipleShifts = (shifts: Shift[]): void => {
+  const data = loadData();
+  data.shifts.push(...shifts);
+  saveData(data);
+};
+
 export const updateShift = (id: string, updates: Partial<Shift>): void => {
   const data = loadData();
   const index = data.shifts.findIndex(s => s.id === id);

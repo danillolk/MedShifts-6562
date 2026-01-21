@@ -21,11 +21,12 @@ const getShiftColor = (shift: Shift): string => {
 interface ShiftsViewProps {
   shifts: Shift[];
   onAddShift: (shift: Shift) => void;
+  onAddMultipleShifts?: (shifts: Shift[]) => void;
   onUpdateShift: (id: string, updates: Partial<Shift>) => void;
   onDeleteShift: (id: string) => void;
 }
 
-export const ShiftsView = ({ shifts, onAddShift, onUpdateShift, onDeleteShift }: ShiftsViewProps) => {
+export const ShiftsView = ({ shifts, onAddShift, onAddMultipleShifts, onUpdateShift, onDeleteShift }: ShiftsViewProps) => {
   const [formOpen, setFormOpen] = useState(false);
   const [editingShift, setEditingShift] = useState<Shift | null>(null);
 
@@ -41,6 +42,15 @@ export const ShiftsView = ({ shifts, onAddShift, onUpdateShift, onDeleteShift }:
       onUpdateShift(shift.id, shift);
     } else {
       onAddShift(shift);
+    }
+    setEditingShift(null);
+  };
+
+  const handleSaveMultiple = (shifts: Shift[]) => {
+    if (onAddMultipleShifts) {
+      onAddMultipleShifts(shifts);
+    } else {
+      shifts.forEach(shift => onAddShift(shift));
     }
     setEditingShift(null);
   };
@@ -208,7 +218,9 @@ export const ShiftsView = ({ shifts, onAddShift, onUpdateShift, onDeleteShift }:
         open={formOpen}
         onClose={handleClose}
         onSave={handleSave}
+        onSaveMultiple={handleSaveMultiple}
         editingShift={editingShift}
+        shifts={shifts}
       />
     </div>
   );

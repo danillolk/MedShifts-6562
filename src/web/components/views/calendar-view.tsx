@@ -25,6 +25,7 @@ import {
 interface CalendarViewProps {
   shifts: Shift[];
   onAddShift: (shift: Shift) => void;
+  onAddMultipleShifts?: (shifts: Shift[]) => void;
   onUpdateShift: (id: string, updates: Partial<Shift>) => void;
 }
 
@@ -32,7 +33,7 @@ const getShiftColor = (shift: Shift): string => {
   return shift.color || SHIFT_COLORS[0].value;
 };
 
-export const CalendarView = ({ shifts, onAddShift, onUpdateShift }: CalendarViewProps) => {
+export const CalendarView = ({ shifts, onAddShift, onAddMultipleShifts, onUpdateShift }: CalendarViewProps) => {
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [formOpen, setFormOpen] = useState(false);
@@ -131,6 +132,15 @@ export const CalendarView = ({ shifts, onAddShift, onUpdateShift }: CalendarView
       onUpdateShift(shift.id, shift);
     } else {
       onAddShift(shift);
+    }
+    setEditingShift(null);
+  };
+
+  const handleSaveMultiple = (shifts: Shift[]) => {
+    if (onAddMultipleShifts) {
+      onAddMultipleShifts(shifts);
+    } else {
+      shifts.forEach(shift => onAddShift(shift));
     }
     setEditingShift(null);
   };
@@ -490,7 +500,9 @@ export const CalendarView = ({ shifts, onAddShift, onUpdateShift }: CalendarView
           setEditingShift(null);
         }}
         onSave={handleSave}
+        onSaveMultiple={handleSaveMultiple}
         editingShift={editingShift}
+        shifts={shifts}
       />
     </div>
   );

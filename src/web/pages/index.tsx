@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Shift, ViewType } from '@/lib/types';
-import { getShifts, addShift, updateShift, deleteShift } from '@/lib/store';
+import { getShifts, addShift, addMultipleShifts, updateShift, deleteShift } from '@/lib/store';
 import { Sidebar } from '@/components/layout/sidebar';
 import { DashboardView } from '@/components/views/dashboard-view';
 import { ShiftsView } from '@/components/views/shifts-view';
@@ -17,6 +17,11 @@ function Index() {
 
   const handleAddShift = useCallback((shift: Shift) => {
     addShift(shift);
+    setShifts(getShifts());
+  }, []);
+
+  const handleAddMultipleShifts = useCallback((shifts: Shift[]) => {
+    addMultipleShifts(shifts);
     setShifts(getShifts());
   }, []);
 
@@ -39,6 +44,7 @@ function Index() {
           <ShiftsView
             shifts={shifts}
             onAddShift={handleAddShift}
+            onAddMultipleShifts={handleAddMultipleShifts}
             onUpdateShift={handleUpdateShift}
             onDeleteShift={handleDeleteShift}
           />
@@ -48,6 +54,7 @@ function Index() {
           <CalendarView
             shifts={shifts}
             onAddShift={handleAddShift}
+            onAddMultipleShifts={handleAddMultipleShifts}
             onUpdateShift={handleUpdateShift}
           />
         );

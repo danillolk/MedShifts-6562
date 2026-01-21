@@ -18,13 +18,16 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { MapPin, Check } from 'lucide-react';
+import { MapPin, Check, Repeat, ChevronDown, ChevronUp, Settings2 } from 'lucide-react';
+import { LocationManager } from './location-manager';
 
 interface ShiftFormProps {
   open: boolean;
   onClose: () => void;
   onSave: (shift: Shift) => void;
+  onSaveMultiple?: (shifts: Shift[]) => void;
   editingShift?: Shift | null;
+  shifts?: Shift[];
 }
 
 const shiftTypes = [
@@ -47,6 +50,26 @@ const specialties = [
   'Anestesiologia',
 ];
 
+type RecurrenceType = 'none' | 'daily' | 'weekly' | 'weekdays' | 'custom';
+
+const recurrenceOptions = [
+  { value: 'none', label: 'Não repetir' },
+  { value: 'daily', label: 'Diariamente' },
+  { value: 'weekly', label: 'Semanalmente' },
+  { value: 'weekdays', label: 'Segunda a Sexta' },
+  { value: 'custom', label: 'Dias específicos da semana' },
+];
+
+const weekDays = [
+  { value: 0, label: 'Dom', fullLabel: 'Domingo' },
+  { value: 1, label: 'Seg', fullLabel: 'Segunda' },
+  { value: 2, label: 'Ter', fullLabel: 'Terça' },
+  { value: 3, label: 'Qua', fullLabel: 'Quarta' },
+  { value: 4, label: 'Qui', fullLabel: 'Quinta' },
+  { value: 5, label: 'Sex', fullLabel: 'Sexta' },
+  { value: 6, label: 'Sáb', fullLabel: 'Sábado' },
+];
+
 const SAVED_LOCATIONS_KEY = 'medplantao_saved_locations';
 
 const getSavedLocations = (): string[] => {
@@ -61,12 +84,60 @@ const getSavedLocations = (): string[] => {
 const saveLocation = (location: string) => {
   const saved = getSavedLocations();
   if (!saved.includes(location)) {
-    const updated = [location, ...saved].slice(0, 20); // Keep max 20 locations
+    const updated = [location, ...saved].slice(0, 20);
     localStorage.setItem(SAVED_LOCATIONS_KEY, JSON.stringify(updated));
   }
 };
 
-export const ShiftForm = ({ open, onClose, onSave, editingShift }: ShiftFormProps) => {
+const generateRecurringDates = (
+  startDate: string,
+  recurrenceType: RecurrenceType,
+  endDate: string,
+  occurrences: number,
+  selectedDays: number[]
+): string[] => {
+  const dates: string[] = [startDate];
+  const start = new Date(startDate + 'T00:00:00');
+  const end = endDate ? new Date(endDate + 'T00:00:00') : null;
+  const maxOccurrences = occurrences || 10;
+
+  if (recurrenceType === 'none') return dates;
+
+  let current = new Date(start);
+  current.setDate(current.getDate() + 1);
+
+  while (dates.length < maxOccurrences) {
+    if (end && current > end) break;
+
+    const dayOfWeek = current.getDay();
+    let shouldAdd = false;
+
+    switch (recurrenceType) {
+      case 'daily':
+        shouldAdd = true;
+        break;
+      case 'weekly':
+        shouldAdd = dayOfWeek === start.getDay();
+        break;
+      case 'weekdays':
+        shouldAdd = dayOfWeek >= 1 && dayOfWeek <= 5;
+        break;
+      case 'custom':
+        shouldAdd = selectedDays.includes(dayOfWeek);
+        break;
+    }
+
+    if (shouldAdd) {
+      dates.push(current.toISOString().split('T')[0]);
+    }
+
+    current.setDate(current.getDate() + 1);
+  }
+
+  return dates;
+};
+
+export const ShiftForm = ({ open, onClose, onSave, onSaveMultiple, editingShift, shifts = [] }: ShiftFormProps) => {
   const [formData, setFormData] = useState<Partial<Shift>>({
     date: editingShift?.date || '',
     startTime: editingShift?.startTime || '',
@@ -83,8 +154,18 @@ export const ShiftForm = ({ open, onClose, onSave, editingShift }: ShiftFormProp
   const [savedLocations, setSavedLocations] = useState<string[]>([]);
   const [showLocationSuggestions, setShowLocationSuggestions] = useState(false);
   const [locationFilter, setLocationFilter] = useState('');
+  const [locationManagerOpen, setLocationManagerOpen] = useState(false);
   const locationInputRef = useRef<HTMLInputElement>(null);
   const suggestionsRef = useRef<HTMLDivElement>(null);
+
+  // Recurrence state
+  const [enableRecurrence, setEnableRecurrence] = useState(false);
+  const [recurrenceType, setRecurrenceType] = useState<RecurrenceType>('none');
+  const [recurrenceEndDate, setRecurrenceEndDate] = useState('');
+  const [recurrenceOccurrences, setRecurrenceOccurrences] = useState(5);
+  const [selectedWeekDays, setSelectedWeekDays] = useState<number[]>([]);
+  const [useEndDate, setUseEndDate] = useState(true);
+  const [showRecurrenceOptions, setShowRecurrenceOptions] = useState(false);
 
   useEffect(() => {
     setSavedLocations(getSavedLocations());
@@ -104,6 +185,7 @@ export const ShiftForm = ({ open, onClose, onSave, editingShift }: ShiftFormProp
         notes: editingShift.notes || '',
         color: editingShift.color || SHIFT_COLORS[0].value,
       });
+      setEnableRecurrence(false);
     } else {
       setFormData({
         date: '',
@@ -117,6 +199,11 @@ export const ShiftForm = ({ open, onClose, onSave, editingShift }: ShiftFormProp
         notes: '',
         color: SHIFT_COLORS[0].value,
       });
+      setEnableRecurrence(false);
+      setRecurrenceType('none');
+      setRecurrenceEndDate('');
+      setRecurrenceOccurrences(5);
+      setSelectedWeekDays([]);
     }
     setErrors({});
   }, [editingShift, open]);
@@ -151,6 +238,15 @@ export const ShiftForm = ({ open, onClose, onSave, editingShift }: ShiftFormProp
       newErrors.paymentAmount = 'Valor deve ser maior que zero';
     }
 
+    if (enableRecurrence && recurrenceType !== 'none') {
+      if (useEndDate && !recurrenceEndDate) {
+        newErrors.recurrenceEndDate = 'Data final obrigatória';
+      }
+      if (recurrenceType === 'custom' && selectedWeekDays.length === 0) {
+        newErrors.selectedWeekDays = 'Selecione ao menos um dia';
+      }
+    }
+
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
@@ -158,26 +254,51 @@ export const ShiftForm = ({ open, onClose, onSave, editingShift }: ShiftFormProp
   const handleSubmit = () => {
     if (!validate()) return;
 
-    // Save location to localStorage
     if (formData.location) {
       saveLocation(formData.location);
     }
 
-    const shift: Shift = {
-      id: editingShift?.id || generateId(),
-      date: formData.date!,
-      startTime: formData.startTime!,
-      endTime: formData.endTime!,
-      location: formData.location!,
-      specialty: formData.specialty!,
-      shiftType: formData.shiftType!,
-      paymentAmount: formData.paymentAmount!,
-      paymentStatus: formData.paymentStatus!,
-      notes: formData.notes,
-      color: formData.color,
-    };
+    if (enableRecurrence && recurrenceType !== 'none' && onSaveMultiple) {
+      const dates = generateRecurringDates(
+        formData.date!,
+        recurrenceType,
+        useEndDate ? recurrenceEndDate : '',
+        useEndDate ? 100 : recurrenceOccurrences,
+        selectedWeekDays
+      );
 
-    onSave(shift);
+      const shifts: Shift[] = dates.map((date) => ({
+        id: generateId(),
+        date,
+        startTime: formData.startTime!,
+        endTime: formData.endTime!,
+        location: formData.location!,
+        specialty: formData.specialty!,
+        shiftType: formData.shiftType!,
+        paymentAmount: formData.paymentAmount!,
+        paymentStatus: formData.paymentStatus!,
+        notes: formData.notes,
+        color: formData.color,
+      }));
+
+      onSaveMultiple(shifts);
+    } else {
+      const shift: Shift = {
+        id: editingShift?.id || generateId(),
+        date: formData.date!,
+        startTime: formData.startTime!,
+        endTime: formData.endTime!,
+        location: formData.location!,
+        specialty: formData.specialty!,
+        shiftType: formData.shiftType!,
+        paymentAmount: formData.paymentAmount!,
+        paymentStatus: formData.paymentStatus!,
+        notes: formData.notes,
+        color: formData.color,
+      };
+
+      onSave(shift);
+    }
     onClose();
   };
 
@@ -192,6 +313,22 @@ export const ShiftForm = ({ open, onClose, onSave, editingShift }: ShiftFormProp
     setLocationFilter(location);
     setShowLocationSuggestions(false);
   };
+
+  const toggleWeekDay = (day: number) => {
+    setSelectedWeekDays(prev =>
+      prev.includes(day) ? prev.filter(d => d !== day) : [...prev, day]
+    );
+  };
+
+  const previewDates = enableRecurrence && recurrenceType !== 'none' && formData.date
+    ? generateRecurringDates(
+        formData.date,
+        recurrenceType,
+        useEndDate ? recurrenceEndDate : '',
+        useEndDate ? 10 : Math.min(recurrenceOccurrences, 10),
+        selectedWeekDays
+      )
+    : [];
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
@@ -239,9 +376,183 @@ export const ShiftForm = ({ open, onClose, onSave, editingShift }: ShiftFormProp
             </div>
           </div>
 
+          {/* Recurrence Toggle - Only show when creating new shift */}
+          {!editingShift && (
+            <div className="space-y-3">
+              <button
+                type="button"
+                onClick={() => {
+                  setEnableRecurrence(!enableRecurrence);
+                  setShowRecurrenceOptions(!enableRecurrence);
+                }}
+                className={`w-full flex items-center justify-between px-4 py-3 rounded-lg border transition-all ${
+                  enableRecurrence 
+                    ? 'bg-emerald-500/20 border-emerald-500 text-emerald-400' 
+                    : 'bg-slate-800 border-slate-600 text-slate-300 hover:border-slate-500'
+                }`}
+              >
+                <div className="flex items-center gap-3">
+                  <Repeat className="w-5 h-5" />
+                  <span className="font-medium">Repetir Plantão</span>
+                </div>
+                {enableRecurrence ? (
+                  <ChevronUp className="w-5 h-5" />
+                ) : (
+                  <ChevronDown className="w-5 h-5" />
+                )}
+              </button>
+
+              {enableRecurrence && showRecurrenceOptions && (
+                <div className="space-y-4 p-4 bg-slate-800/50 rounded-lg border border-slate-700">
+                  {/* Recurrence Type */}
+                  <div className="space-y-2">
+                    <Label className="text-slate-300">Frequência</Label>
+                    <Select
+                      value={recurrenceType}
+                      onValueChange={(v) => setRecurrenceType(v as RecurrenceType)}
+                    >
+                      <SelectTrigger className="bg-slate-800 border-slate-600 text-white">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent className="bg-slate-800 border-slate-600">
+                        {recurrenceOptions.map((opt) => (
+                          <SelectItem key={opt.value} value={opt.value} className="text-white hover:bg-slate-700">
+                            {opt.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {/* Custom days selection */}
+                  {recurrenceType === 'custom' && (
+                    <div className="space-y-2">
+                      <Label className="text-slate-300">Dias da Semana</Label>
+                      <div className="flex flex-wrap gap-2">
+                        {weekDays.map((day) => (
+                          <button
+                            key={day.value}
+                            type="button"
+                            onClick={() => toggleWeekDay(day.value)}
+                            className={`px-3 py-2 rounded-lg text-sm font-medium transition-all ${
+                              selectedWeekDays.includes(day.value)
+                                ? 'bg-emerald-500 text-white'
+                                : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
+                            }`}
+                            title={day.fullLabel}
+                          >
+                            {day.label}
+                          </button>
+                        ))}
+                      </div>
+                      {errors.selectedWeekDays && (
+                        <p className="text-red-400 text-sm">{errors.selectedWeekDays}</p>
+                      )}
+                    </div>
+                  )}
+
+                  {recurrenceType !== 'none' && (
+                    <>
+                      {/* End condition toggle */}
+                      <div className="flex gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setUseEndDate(true)}
+                          className={`flex-1 px-3 py-2 rounded-lg text-sm font-medium transition-all ${
+                            useEndDate
+                              ? 'bg-emerald-500 text-white'
+                              : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
+                          }`}
+                        >
+                          Até uma data
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setUseEndDate(false)}
+                          className={`flex-1 px-3 py-2 rounded-lg text-sm font-medium transition-all ${
+                            !useEndDate
+                              ? 'bg-emerald-500 text-white'
+                              : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
+                          }`}
+                        >
+                          Nº de ocorrências
+                        </button>
+                      </div>
+
+                      {useEndDate ? (
+                        <div className="space-y-2">
+                          <Label className="text-slate-300">Data Final</Label>
+                          <Input
+                            type="date"
+                            value={recurrenceEndDate}
+                            onChange={(e) => setRecurrenceEndDate(e.target.value)}
+                            min={formData.date}
+                            className="bg-slate-800 border-slate-600 text-white focus:border-emerald-500"
+                          />
+                          {errors.recurrenceEndDate && (
+                            <p className="text-red-400 text-sm">{errors.recurrenceEndDate}</p>
+                          )}
+                        </div>
+                      ) : (
+                        <div className="space-y-2">
+                          <Label className="text-slate-300">Número de Ocorrências</Label>
+                          <Input
+                            type="number"
+                            min="2"
+                            max="52"
+                            value={recurrenceOccurrences}
+                            onChange={(e) => setRecurrenceOccurrences(parseInt(e.target.value) || 5)}
+                            className="bg-slate-800 border-slate-600 text-white focus:border-emerald-500"
+                          />
+                        </div>
+                      )}
+
+                      {/* Preview */}
+                      {previewDates.length > 1 && (
+                        <div className="space-y-2">
+                          <Label className="text-slate-400 text-sm">
+                            Pré-visualização ({previewDates.length} plantões)
+                          </Label>
+                          <div className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto">
+                            {previewDates.slice(0, 10).map((date, i) => (
+                              <span
+                                key={i}
+                                className="px-2 py-1 bg-slate-700 rounded text-xs text-slate-300"
+                              >
+                                {new Date(date + 'T00:00:00').toLocaleDateString('pt-BR', {
+                                  day: '2-digit',
+                                  month: 'short',
+                                })}
+                              </span>
+                            ))}
+                            {previewDates.length > 10 && (
+                              <span className="px-2 py-1 bg-emerald-500/20 text-emerald-400 rounded text-xs">
+                                +{previewDates.length - 10} mais
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Location with suggestions */}
           <div className="space-y-2 relative">
-            <Label className="text-slate-300">Hospital / Local</Label>
+            <div className="flex items-center justify-between">
+              <Label className="text-slate-300">Hospital / Local</Label>
+              <button
+                type="button"
+                onClick={() => setLocationManagerOpen(true)}
+                className="flex items-center gap-1 text-xs text-slate-400 hover:text-emerald-400 transition-colors"
+              >
+                <Settings2 className="w-3.5 h-3.5" />
+                Gerenciar Locais
+              </button>
+            </div>
             <div className="relative">
               <Input
                 ref={locationInputRef}
@@ -391,10 +702,20 @@ export const ShiftForm = ({ open, onClose, onSave, editingShift }: ShiftFormProp
             Cancelar
           </Button>
           <Button onClick={handleSubmit} className="bg-emerald-600 hover:bg-emerald-700 text-white">
-            {editingShift ? 'Salvar' : 'Adicionar'}
+            {editingShift ? 'Salvar' : enableRecurrence && previewDates.length > 1 ? `Adicionar ${previewDates.length} Plantões` : 'Adicionar'}
           </Button>
         </DialogFooter>
       </DialogContent>
+
+      <LocationManager
+        open={locationManagerOpen}
+        onClose={() => {
+          setLocationManagerOpen(false);
+          // Refresh saved locations after managing
+          setSavedLocations(getSavedLocations());
+        }}
+        shifts={shifts}
+      />
     </Dialog>
   );
 };
