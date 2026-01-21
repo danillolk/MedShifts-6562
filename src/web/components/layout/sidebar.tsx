@@ -63,8 +63,8 @@ export const Sidebar = ({ currentView, onViewChange }: SidebarProps) => {
               <Stethoscope className="w-6 h-6 text-white" />
             </div>
             <div>
-              <h1 className="text-xl font-bold text-white tracking-tight">MedShifts</h1>
-              <p className="text-xs text-slate-400">Gestão de Plantões</p>
+              <h1 className="text-xl font-bold text-white tracking-tight">MedPlantão</h1>
+              <p className="text-xs text-slate-400">Gestão de Plantões Médicos</p>
             </div>
           </div>
         </div>
