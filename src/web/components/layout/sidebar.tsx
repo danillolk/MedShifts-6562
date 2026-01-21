@@ -102,7 +102,7 @@ export const Sidebar = ({ currentView, onViewChange }: SidebarProps) => {
               <span className="text-white font-bold text-sm">DR</span>
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium text-white truncate">Dr. Médico</p>
+              <p className="text-sm font-medium text-white truncate">Dr. Danillo Lobo</p>
               <p className="text-xs text-slate-400">Clínico Geral</p>
             </div>
           </div>
