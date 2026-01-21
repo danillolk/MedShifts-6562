@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { Shift } from '@/lib/types';
+import { useState, useEffect, useRef } from 'react';
+import { Shift, SHIFT_COLORS } from '@/lib/types';
 import { generateId } from '@/lib/store';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -18,6 +18,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { MapPin, Check } from 'lucide-react';
 
 interface ShiftFormProps {
   open: boolean;
@@ -46,6 +47,25 @@ const specialties = [
   'Anestesiologia',
 ];
 
+const SAVED_LOCATIONS_KEY = 'medplantao_saved_locations';
+
+const getSavedLocations = (): string[] => {
+  try {
+    const saved = localStorage.getItem(SAVED_LOCATIONS_KEY);
+    return saved ? JSON.parse(saved) : [];
+  } catch {
+    return [];
+  }
+};
+
+const saveLocation = (location: string) => {
+  const saved = getSavedLocations();
+  if (!saved.includes(location)) {
+    const updated = [location, ...saved].slice(0, 20); // Keep max 20 locations
+    localStorage.setItem(SAVED_LOCATIONS_KEY, JSON.stringify(updated));
+  }
+};
+
 export const ShiftForm = ({ open, onClose, onSave, editingShift }: ShiftFormProps) => {
   const [formData, setFormData] = useState<Partial<Shift>>({
     date: editingShift?.date || '',
@@ -57,8 +77,67 @@ export const ShiftForm = ({ open, onClose, onSave, editingShift }: ShiftFormProp
     paymentAmount: editingShift?.paymentAmount || 0,
     paymentStatus: editingShift?.paymentStatus || 'pending',
     notes: editingShift?.notes || '',
+    color: editingShift?.color || SHIFT_COLORS[0].value,
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [savedLocations, setSavedLocations] = useState<string[]>([]);
+  const [showLocationSuggestions, setShowLocationSuggestions] = useState(false);
+  const [locationFilter, setLocationFilter] = useState('');
+  const locationInputRef = useRef<HTMLInputElement>(null);
+  const suggestionsRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    setSavedLocations(getSavedLocations());
+  }, [open]);
+
+  useEffect(() => {
+    if (editingShift) {
+      setFormData({
+        date: editingShift.date,
+        startTime: editingShift.startTime,
+        endTime: editingShift.endTime,
+        location: editingShift.location,
+        specialty: editingShift.specialty,
+        shiftType: editingShift.shiftType,
+        paymentAmount: editingShift.paymentAmount,
+        paymentStatus: editingShift.paymentStatus,
+        notes: editingShift.notes || '',
+        color: editingShift.color || SHIFT_COLORS[0].value,
+      });
+    } else {
+      setFormData({
+        date: '',
+        startTime: '',
+        endTime: '',
+        location: '',
+        specialty: '',
+        shiftType: 'diurno',
+        paymentAmount: 0,
+        paymentStatus: 'pending',
+        notes: '',
+        color: SHIFT_COLORS[0].value,
+      });
+    }
+    setErrors({});
+  }, [editingShift, open]);
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (
+        suggestionsRef.current &&
+        !suggestionsRef.current.contains(e.target as Node) &&
+        !locationInputRef.current?.contains(e.target as Node)
+      ) {
+        setShowLocationSuggestions(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const filteredLocations = savedLocations.filter(loc =>
+    loc.toLowerCase().includes(locationFilter.toLowerCase())
+  );
 
   const validate = (): boolean => {
     const newErrors: Record<string, string> = {};
@@ -79,6 +158,11 @@ export const ShiftForm = ({ open, onClose, onSave, editingShift }: ShiftFormProp
   const handleSubmit = () => {
     if (!validate()) return;
 
+    // Save location to localStorage
+    if (formData.location) {
+      saveLocation(formData.location);
+    }
+
     const shift: Shift = {
       id: editingShift?.id || generateId(),
       date: formData.date!,
@@ -90,10 +174,23 @@ export const ShiftForm = ({ open, onClose, onSave, editingShift }: ShiftFormProp
       paymentAmount: formData.paymentAmount!,
       paymentStatus: formData.paymentStatus!,
       notes: formData.notes,
+      color: formData.color,
     };
 
     onSave(shift);
     onClose();
+  };
+
+  const handleLocationChange = (value: string) => {
+    setFormData({ ...formData, location: value });
+    setLocationFilter(value);
+    setShowLocationSuggestions(true);
+  };
+
+  const selectLocation = (location: string) => {
+    setFormData({ ...formData, location });
+    setLocationFilter(location);
+    setShowLocationSuggestions(false);
   };
 
   return (
@@ -142,15 +239,41 @@ export const ShiftForm = ({ open, onClose, onSave, editingShift }: ShiftFormProp
             </div>
           </div>
 
-          {/* Location */}
-          <div className="space-y-2">
+          {/* Location with suggestions */}
+          <div className="space-y-2 relative">
             <Label className="text-slate-300">Hospital / Local</Label>
-            <Input
-              placeholder="Ex: Hospital São Lucas"
-              value={formData.location}
-              onChange={(e) => setFormData({ ...formData, location: e.target.value })}
-              className="bg-slate-800 border-slate-600 text-white placeholder:text-slate-500 focus:border-emerald-500"
-            />
+            <div className="relative">
+              <Input
+                ref={locationInputRef}
+                placeholder="Ex: Hospital São Lucas"
+                value={formData.location}
+                onChange={(e) => handleLocationChange(e.target.value)}
+                onFocus={() => setShowLocationSuggestions(true)}
+                className="bg-slate-800 border-slate-600 text-white placeholder:text-slate-500 focus:border-emerald-500"
+              />
+              {showLocationSuggestions && filteredLocations.length > 0 && (
+                <div
+                  ref={suggestionsRef}
+                  className="absolute z-50 w-full mt-1 bg-slate-800 border border-slate-600 rounded-lg shadow-xl max-h-48 overflow-y-auto"
+                >
+                  <div className="p-2 text-xs text-slate-400 border-b border-slate-700 flex items-center gap-1.5">
+                    <MapPin className="w-3 h-3" />
+                    Locais Recentes
+                  </div>
+                  {filteredLocations.map((loc) => (
+                    <button
+                      key={loc}
+                      type="button"
+                      onClick={() => selectLocation(loc)}
+                      className="w-full px-3 py-2.5 text-left text-white hover:bg-slate-700 transition-colors flex items-center gap-2"
+                    >
+                      <MapPin className="w-4 h-4 text-emerald-400 shrink-0" />
+                      <span className="truncate">{loc}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
             {errors.location && <p className="text-red-400 text-sm">{errors.location}</p>}
           </div>
 
@@ -193,6 +316,31 @@ export const ShiftForm = ({ open, onClose, onSave, editingShift }: ShiftFormProp
                 ))}
               </SelectContent>
             </Select>
+          </div>
+
+          {/* Color Picker */}
+          <div className="space-y-2">
+            <Label className="text-slate-300">Cor do Plantão</Label>
+            <div className="flex flex-wrap gap-2">
+              {SHIFT_COLORS.map((color) => (
+                <button
+                  key={color.value}
+                  type="button"
+                  onClick={() => setFormData({ ...formData, color: color.value })}
+                  className={`w-9 h-9 rounded-lg transition-all flex items-center justify-center ${
+                    formData.color === color.value 
+                      ? 'ring-2 ring-white ring-offset-2 ring-offset-slate-900 scale-110' 
+                      : 'hover:scale-105'
+                  }`}
+                  style={{ backgroundColor: color.value }}
+                  title={color.label}
+                >
+                  {formData.color === color.value && (
+                    <Check className="w-5 h-5 text-white drop-shadow-md" />
+                  )}
+                </button>
+              ))}
+            </div>
           </div>
 
           {/* Payment */}

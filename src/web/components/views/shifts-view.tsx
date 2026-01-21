@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Shift } from '@/lib/types';
+import { Shift, SHIFT_COLORS } from '@/lib/types';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -13,6 +13,10 @@ import {
   Calendar,
   Stethoscope
 } from 'lucide-react';
+
+const getShiftColor = (shift: Shift): string => {
+  return shift.color || SHIFT_COLORS[0].value;
+};
 
 interface ShiftsViewProps {
   shifts: Shift[];
@@ -109,13 +113,23 @@ export const ShiftsView = ({ shifts, onAddShift, onUpdateShift, onDeleteShift }:
           {sortedShifts.map((shift) => (
             <Card 
               key={shift.id}
-              className="bg-slate-800/50 border-slate-700 hover:border-slate-600 transition-colors"
+              className="bg-slate-800/50 border-slate-700 hover:border-slate-600 transition-colors relative overflow-hidden"
             >
-              <CardContent className="p-6">
+              {/* Color indicator bar */}
+              <div 
+                className="absolute left-0 top-0 bottom-0 w-1"
+                style={{ backgroundColor: getShiftColor(shift) }}
+              />
+              <CardContent className="p-6 pl-5">
                 <div className="flex flex-col lg:flex-row lg:items-center gap-4">
                   {/* Date badge */}
                   <div className="flex items-center gap-4 lg:w-48">
-                    <div className="w-14 h-14 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-600 flex flex-col items-center justify-center shadow-lg">
+                    <div 
+                      className="w-14 h-14 rounded-xl flex flex-col items-center justify-center shadow-lg"
+                      style={{ 
+                        background: `linear-gradient(135deg, ${getShiftColor(shift)}, ${getShiftColor(shift)}dd)` 
+                      }}
+                    >
                       <span className="text-xs text-emerald-100 uppercase">
                         {new Date(shift.date + 'T00:00:00').toLocaleDateString('pt-BR', { month: 'short' })}
                       </span>

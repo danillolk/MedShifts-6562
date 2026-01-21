@@ -1,4 +1,4 @@
-import { Shift } from '@/lib/types';
+import { Shift, SHIFT_COLORS } from '@/lib/types';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { 
@@ -10,6 +10,10 @@ import {
   AlertCircle,
   MapPin
 } from 'lucide-react';
+
+const getShiftColor = (shift: Shift): string => {
+  return shift.color || SHIFT_COLORS[0].value;
+};
 
 interface DashboardViewProps {
   shifts: Shift[];
@@ -137,13 +141,27 @@ export const DashboardView = ({ shifts }: DashboardViewProps) => {
               upcomingShifts.map((shift) => (
                 <div
                   key={shift.id}
-                  className="flex items-center gap-4 p-3 rounded-xl bg-slate-700/50 hover:bg-slate-700 transition-colors"
+                  className="flex items-center gap-4 p-3 rounded-xl bg-slate-700/50 hover:bg-slate-700 transition-colors relative overflow-hidden"
                 >
-                  <div className="w-12 h-12 rounded-xl bg-emerald-500/20 flex flex-col items-center justify-center">
-                    <span className="text-xs text-emerald-400 font-medium">
+                  {/* Color indicator */}
+                  <div 
+                    className="absolute left-0 top-0 bottom-0 w-0.5"
+                    style={{ backgroundColor: getShiftColor(shift) }}
+                  />
+                  <div 
+                    className="w-12 h-12 rounded-xl flex flex-col items-center justify-center ml-1"
+                    style={{ backgroundColor: `${getShiftColor(shift)}20` }}
+                  >
+                    <span 
+                      className="text-xs font-medium"
+                      style={{ color: getShiftColor(shift) }}
+                    >
                       {formatDate(shift.date).split(' ')[1]}
                     </span>
-                    <span className="text-lg font-bold text-emerald-400">
+                    <span 
+                      className="text-lg font-bold"
+                      style={{ color: getShiftColor(shift) }}
+                    >
                       {formatDate(shift.date).split(' ')[0]}
                     </span>
                   </div>
@@ -179,11 +197,16 @@ export const DashboardView = ({ shifts }: DashboardViewProps) => {
               recentShifts.map((shift) => (
                 <div
                   key={shift.id}
-                  className="flex items-center gap-4 p-3 rounded-xl bg-slate-700/50 hover:bg-slate-700 transition-colors"
+                  className="flex items-center gap-4 p-3 rounded-xl bg-slate-700/50 hover:bg-slate-700 transition-colors relative overflow-hidden"
                 >
-                  <div className="flex-1 min-w-0">
+                  {/* Color indicator */}
+                  <div 
+                    className="absolute left-0 top-0 bottom-0 w-0.5"
+                    style={{ backgroundColor: getShiftColor(shift) }}
+                  />
+                  <div className="flex-1 min-w-0 ml-1">
                     <div className="flex items-center gap-2">
-                      <MapPin className="w-4 h-4 text-slate-400" />
+                      <MapPin className="w-4 h-4" style={{ color: getShiftColor(shift) }} />
                       <p className="text-white font-medium truncate">{shift.location}</p>
                     </div>
                     <p className="text-sm text-slate-400 mt-1">{formatDate(shift.date)} • {shift.specialty}</p>

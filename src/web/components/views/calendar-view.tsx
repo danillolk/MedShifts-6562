@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { Shift } from '@/lib/types';
+import { Shift, SHIFT_COLORS } from '@/lib/types';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -27,6 +27,10 @@ interface CalendarViewProps {
   onAddShift: (shift: Shift) => void;
   onUpdateShift: (id: string, updates: Partial<Shift>) => void;
 }
+
+const getShiftColor = (shift: Shift): string => {
+  return shift.color || SHIFT_COLORS[0].value;
+};
 
 export const CalendarView = ({ shifts, onAddShift, onUpdateShift }: CalendarViewProps) => {
   const [currentDate, setCurrentDate] = useState(new Date());
@@ -320,11 +324,8 @@ export const CalendarView = ({ shifts, onAddShift, onUpdateShift }: CalendarView
                         {dayShifts.slice(0, 3).map((shift, idx) => (
                           <div
                             key={idx}
-                            className={`w-1.5 h-1.5 rounded-full ${
-                              shift.paymentStatus === 'received' 
-                                ? 'bg-emerald-400' 
-                                : 'bg-amber-400'
-                            }`}
+                            className="w-1.5 h-1.5 rounded-full"
+                            style={{ backgroundColor: getShiftColor(shift) }}
                           />
                         ))}
                       </div>
@@ -373,31 +374,38 @@ export const CalendarView = ({ shifts, onAddShift, onUpdateShift }: CalendarView
                     <div
                       key={shift.id}
                       onClick={() => handleEditShift(shift)}
-                      className="p-4 rounded-xl bg-slate-700/50 hover:bg-slate-700 cursor-pointer transition-colors"
+                      className="p-4 rounded-xl bg-slate-700/50 hover:bg-slate-700 cursor-pointer transition-colors relative overflow-hidden"
                     >
-                      <div className="flex items-center justify-between mb-2">
-                        <h4 className="font-semibold text-white truncate">{shift.location}</h4>
-                        <Badge
-                          className={shift.paymentStatus === 'received' 
-                            ? 'bg-emerald-500/20 text-emerald-400' 
-                            : 'bg-amber-500/20 text-amber-400'
-                          }
-                        >
-                          {shift.paymentStatus === 'received' ? 'Pago' : 'Pendente'}
-                        </Badge>
-                      </div>
-                      <div className="space-y-1.5 text-sm text-slate-400">
-                        <div className="flex items-center gap-2">
-                          <Clock className="w-3.5 h-3.5" />
-                          <span>{shift.startTime} - {shift.endTime}</span>
+                      {/* Color indicator bar */}
+                      <div 
+                        className="absolute left-0 top-0 bottom-0 w-1 rounded-l-xl"
+                        style={{ backgroundColor: getShiftColor(shift) }}
+                      />
+                      <div className="pl-2">
+                        <div className="flex items-center justify-between mb-2">
+                          <h4 className="font-semibold text-white truncate">{shift.location}</h4>
+                          <Badge
+                            className={shift.paymentStatus === 'received' 
+                              ? 'bg-emerald-500/20 text-emerald-400' 
+                              : 'bg-amber-500/20 text-amber-400'
+                            }
+                          >
+                            {shift.paymentStatus === 'received' ? 'Pago' : 'Pendente'}
+                          </Badge>
                         </div>
-                        <div className="flex items-center gap-2">
-                          <MapPin className="w-3.5 h-3.5" />
-                          <span>{shift.specialty}</span>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <DollarSign className="w-3.5 h-3.5" />
-                          <span className="font-medium text-emerald-400">{formatCurrency(shift.paymentAmount)}</span>
+                        <div className="space-y-1.5 text-sm text-slate-400">
+                          <div className="flex items-center gap-2">
+                            <Clock className="w-3.5 h-3.5" />
+                            <span>{shift.startTime} - {shift.endTime}</span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <MapPin className="w-3.5 h-3.5" />
+                            <span>{shift.specialty}</span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <DollarSign className="w-3.5 h-3.5" />
+                            <span className="font-medium text-emerald-400">{formatCurrency(shift.paymentAmount)}</span>
+                          </div>
                         </div>
                       </div>
                     </div>
@@ -438,13 +446,27 @@ export const CalendarView = ({ shifts, onAddShift, onUpdateShift }: CalendarView
                   {upcomingShifts.map((shift) => (
                     <div
                       key={shift.id}
-                      className="flex items-center gap-3 p-2 rounded-lg bg-slate-700/30 hover:bg-slate-700/50 transition-colors"
+                      className="flex items-center gap-3 p-2 rounded-lg bg-slate-700/30 hover:bg-slate-700/50 transition-colors relative overflow-hidden"
                     >
-                      <div className="w-10 h-10 rounded-lg bg-emerald-500/20 flex flex-col items-center justify-center shrink-0">
-                        <span className="text-[10px] text-emerald-400 font-medium leading-none">
+                      {/* Color indicator */}
+                      <div 
+                        className="absolute left-0 top-0 bottom-0 w-0.5"
+                        style={{ backgroundColor: getShiftColor(shift) }}
+                      />
+                      <div 
+                        className="w-10 h-10 rounded-lg flex flex-col items-center justify-center shrink-0 ml-1"
+                        style={{ backgroundColor: `${getShiftColor(shift)}20` }}
+                      >
+                        <span 
+                          className="text-[10px] font-medium leading-none"
+                          style={{ color: getShiftColor(shift) }}
+                        >
                           {formatUpcomingDate(shift.date).split(' ')[1]}
                         </span>
-                        <span className="text-sm font-bold text-emerald-400 leading-none">
+                        <span 
+                          className="text-sm font-bold leading-none"
+                          style={{ color: getShiftColor(shift) }}
+                        >
                           {formatUpcomingDate(shift.date).split(' ')[0]}
                         </span>
                       </div>
