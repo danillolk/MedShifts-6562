@@ -44,7 +44,10 @@ export const DashboardView = ({ shifts }: DashboardViewProps) => {
   };
 
   const formatDate = (dateStr: string) => {
-    return new Date(dateStr + 'T00:00:00').toLocaleDateString('pt-BR', {
+    // Parse date parts directly to avoid timezone issues
+    const [year, month, day] = dateStr.split('-').map(Number);
+    const date = new Date(year, month - 1, day);
+    return date.toLocaleDateString('pt-BR', {
       day: '2-digit',
       month: 'short',
     });

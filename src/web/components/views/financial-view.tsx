@@ -52,11 +52,16 @@ export const FinancialView = ({ shifts, onUpdateShift }: FinancialViewProps) => 
     return Object.entries(data)
       .sort(([a], [b]) => a.localeCompare(b))
       .slice(-6)
-      .map(([month, values]) => ({
-        month: new Date(month + '-01').toLocaleDateString('pt-BR', { month: 'short' }),
-        ...values,
-        total: values.received + values.pending
-      }));
+      .map(([monthStr, values]) => {
+        // Parse month directly to avoid timezone issues
+        const [year, month] = monthStr.split('-').map(Number);
+        const date = new Date(year, month - 1, 1);
+        return {
+          month: date.toLocaleDateString('pt-BR', { month: 'short' }),
+          ...values,
+          total: values.received + values.pending
+        };
+      });
   }, [shifts]);
 
   const maxMonthlyTotal = Math.max(...monthlyData.map(d => d.total), 1);
@@ -66,7 +71,10 @@ export const FinancialView = ({ shifts, onUpdateShift }: FinancialViewProps) => 
   };
 
   const formatDate = (dateStr: string) => {
-    return new Date(dateStr + 'T00:00:00').toLocaleDateString('pt-BR', {
+    // Parse date parts directly to avoid timezone issues
+    const [year, month, day] = dateStr.split('-').map(Number);
+    const date = new Date(year, month - 1, day);
+    return date.toLocaleDateString('pt-BR', {
       day: '2-digit',
       month: 'short',
       year: 'numeric',
