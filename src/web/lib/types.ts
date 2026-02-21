@@ -4,10 +4,10 @@ export interface Shift {
   startTime: string;
   endTime: string;
   location: string;
-  specialty: string;
-  shiftType: 'diurno' | 'noturno' | 'plantão_12h' | 'plantão_24h';
-  paymentAmount: number;
-  paymentStatus: 'pending' | 'received';
+  specialty?: string;
+  shiftType?: 'diurno' | 'noturno' | 'plantão_12h' | 'plantão_24h';
+  paymentAmount?: number;
+  paymentStatus?: 'pending' | 'received';
   notes?: string;
   color?: string;
 }

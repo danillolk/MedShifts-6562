@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Shift, ViewType } from '@/lib/types';
-import { getShifts, addShift, addMultipleShifts, updateShift, deleteShift } from '@/lib/store';
+import { apiFetchShifts, addShift, addMultipleShifts, updateShift, deleteShift } from '@/lib/store';
 import { Sidebar } from '@/components/layout/sidebar';
 import { DashboardView } from '@/components/views/dashboard-view';
 import { ShiftsView } from '@/components/views/shifts-view';
@@ -12,27 +12,31 @@ function Index() {
   const [shifts, setShifts] = useState<Shift[]>([]);
 
   useEffect(() => {
-    setShifts(getShifts());
+    const init = async () => {
+      const data = await apiFetchShifts();
+      setShifts(data);
+    };
+    init();
   }, []);
 
-  const handleAddShift = useCallback((shift: Shift) => {
-    addShift(shift);
-    setShifts(getShifts());
+  const handleAddShift = useCallback(async (shift: Shift) => {
+    await addShift(shift);
+    setShifts(await apiFetchShifts());
   }, []);
 
-  const handleAddMultipleShifts = useCallback((shifts: Shift[]) => {
-    addMultipleShifts(shifts);
-    setShifts(getShifts());
+  const handleAddMultipleShifts = useCallback(async (shifts: Shift[]) => {
+    await addMultipleShifts(shifts);
+    setShifts(await apiFetchShifts());
   }, []);
 
-  const handleUpdateShift = useCallback((id: string, updates: Partial<Shift>) => {
-    updateShift(id, updates);
-    setShifts(getShifts());
+  const handleUpdateShift = useCallback(async (id: string, updates: Partial<Shift>) => {
+    await updateShift(id, updates);
+    setShifts(await apiFetchShifts());
   }, []);
 
-  const handleDeleteShift = useCallback((id: string) => {
-    deleteShift(id);
-    setShifts(getShifts());
+  const handleDeleteShift = useCallback(async (id: string) => {
+    await deleteShift(id);
+    setShifts(await apiFetchShifts());
   }, []);
 
   const renderView = () => {

@@ -1,1 +1,15 @@
-{"id":"k8bu4egtw9w4w7ffxuq0zsjkl8azztw9","name":"My Website","description":"A website built with Runable","url":"https://example.com","ogImage":"/og-image.png","favicon":"/vite.svg","twitter":{"card":"summary_large_image","site":"@runable"},"themeColor":"#000000","previewPort":4039,"previewUrl":"https://4039-iv64zmwbhza9mua64ftwh.e2b.app"}
+{
+  "id": "k8bu4egtw9w4w7ffxuq0zsjkl8azztw9",
+  "name": "Plantão Med",
+  "description": "",
+  "url": "https://example.com",
+  "ogImage": "/og-image.png",
+  "favicon": "/vite.svg",
+  "twitter": {
+    "card": "summary_large_image",
+    "site": "@runable"
+  },
+  "themeColor": "#000000",
+  "previewPort": 4039,
+  "previewUrl": "https://4039-iv64zmwbhza9mua64ftwh.e2b.app"
+}

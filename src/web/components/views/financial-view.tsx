@@ -1,7 +1,11 @@
-import { useMemo } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import { Shift } from '@/lib/types';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { 
   TrendingUp, 
   TrendingDown, 
@@ -11,8 +15,27 @@ import {
   PieChart,
   BarChart3,
   MapPin,
-  Calendar
+  Calendar,
+  Settings2
 } from 'lucide-react';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import { apiFetchTargets, apiSaveTargets } from '@/lib/store';
+
+interface MonthlyTarget {
+  expected: number;
+  actual: number;
+}
+
+type TargetsData = Record<string, MonthlyTarget>;
+
+const MONTHS = [
+  "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
+  "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"
+];
 
 interface FinancialViewProps {
   shifts: Shift[];
@@ -20,49 +43,108 @@ interface FinancialViewProps {
 }
 
 export const FinancialView = ({ shifts, onUpdateShift }: FinancialViewProps) => {
-  const totalReceived = shifts
-    .filter(s => s.paymentStatus === 'received')
-    .reduce((acc, s) => acc + s.paymentAmount, 0);
-  
-  const totalPending = shifts
-    .filter(s => s.paymentStatus === 'pending')
-    .reduce((acc, s) => acc + s.paymentAmount, 0);
-
-  const totalAmount = totalReceived + totalPending;
-
-  const receivedPercentage = totalAmount > 0 ? (totalReceived / totalAmount) * 100 : 0;
-  const pendingPercentage = totalAmount > 0 ? (totalPending / totalAmount) * 100 : 0;
-
-  // Monthly data for chart
-  const monthlyData = useMemo(() => {
-    const data: Record<string, { received: number; pending: number }> = {};
-    
+  const years = useMemo(() => {
+    const yearsSet = new Set<string>();
     shifts.forEach(shift => {
-      const month = shift.date.slice(0, 7);
-      if (!data[month]) {
-        data[month] = { received: 0, pending: 0 };
-      }
-      if (shift.paymentStatus === 'received') {
-        data[month].received += shift.paymentAmount;
-      } else {
-        data[month].pending += shift.paymentAmount;
+      yearsSet.add(shift.date.split('-')[0]);
+    });
+    const result = Array.from(yearsSet).sort((a, b) => b.localeCompare(a));
+    const currentYear = new Date().getFullYear().toString();
+    if (!result.includes(currentYear)) result.push(currentYear);
+    return result.sort((a, b) => b.localeCompare(a));
+  }, [shifts]);
+
+  const hospitals = useMemo(() => {
+    const hospitalSet = new Set<string>();
+    shifts.forEach(shift => {
+      hospitalSet.add(shift.location);
+    });
+    return ["Todos", ...Array.from(hospitalSet).sort()];
+  }, [shifts]);
+
+  const [selectedYear, setSelectedYear] = useState(years[0] || new Date().getFullYear().toString());
+  const [selectedMonth, setSelectedMonth] = useState(new Date().getMonth().toString());
+  const [selectedHospital, setSelectedHospital] = useState("Todos");
+  const [targets, setTargets] = useState<TargetsData>({});
+
+  useEffect(() => {
+    const init = async () => {
+      const data = await apiFetchTargets();
+      const targetsMap: TargetsData = {};
+      data.forEach((t: any) => {
+        targetsMap[t.id] = { expected: t.expected, actual: t.actual };
+      });
+      setTargets(targetsMap);
+    };
+    init();
+  }, []);
+
+  const currentTargetKey = `${selectedYear}-${selectedMonth}`;
+  const currentTarget = targets[currentTargetKey] || { expected: 0, actual: 0 };
+
+  const handleTargetChange = async (field: keyof MonthlyTarget, value: string) => {
+    const numValue = parseFloat(value) || 0;
+    const newTarget = {
+      ...currentTarget,
+      [field]: numValue
+    };
+    const newTargets = {
+      ...targets,
+      [currentTargetKey]: newTarget
+    };
+    setTargets(newTargets);
+    
+    await apiSaveTargets({
+      id: currentTargetKey,
+      year: selectedYear,
+      month: selectedMonth,
+      ...newTarget
+    });
+  };
+
+  const filteredShifts = useMemo(() => {
+    return shifts.filter(s => {
+      const yearMatch = s.date.startsWith(selectedYear);
+      const hospitalMatch = selectedHospital === "Todos" || s.location === selectedHospital;
+      return yearMatch && hospitalMatch;
+    });
+  }, [shifts, selectedYear, selectedHospital]);
+
+  const yearMetrics = useMemo(() => {
+    let received = 0;
+    let expected = 0;
+
+    Object.entries(targets).forEach(([key, target]) => {
+      if (key.startsWith(`${selectedYear}-`)) {
+        received += target.actual;
+        expected += target.expected;
       }
     });
 
-    return Object.entries(data)
-      .sort(([a], [b]) => a.localeCompare(b))
-      .slice(-6)
-      .map(([monthStr, values]) => {
-        // Parse month directly to avoid timezone issues
-        const [year, month] = monthStr.split('-').map(Number);
-        const date = new Date(year, month - 1, 1);
-        return {
-          month: date.toLocaleDateString('pt-BR', { month: 'short' }),
-          ...values,
-          total: values.received + values.pending
-        };
-      });
-  }, [shifts]);
+    const pending = Math.max(0, expected - received);
+    const total = expected;
+
+    return {
+      received,
+      pending,
+      total,
+      receivedPercentage: total > 0 ? (received / total) * 100 : 0,
+      pendingPercentage: total > 0 ? (pending / total) * 100 : 0
+    };
+  }, [targets, selectedYear]);
+
+  const monthlyData = useMemo(() => {
+    return MONTHS.map((monthName, index) => {
+      const key = `${selectedYear}-${index}`;
+      const target = targets[key] || { expected: 0, actual: 0 };
+      return {
+        month: monthName.slice(0, 3),
+        received: target.actual,
+        pending: Math.max(0, target.expected - target.actual),
+        total: target.expected
+      };
+    }).filter(d => d.total > 0);
+  }, [targets, selectedYear]);
 
   const maxMonthlyTotal = Math.max(...monthlyData.map(d => d.total), 1);
 
@@ -71,7 +153,6 @@ export const FinancialView = ({ shifts, onUpdateShift }: FinancialViewProps) => 
   };
 
   const formatDate = (dateStr: string) => {
-    // Parse date parts directly to avoid timezone issues
     const [year, month, day] = dateStr.split('-').map(Number);
     const date = new Date(year, month - 1, day);
     return date.toLocaleDateString('pt-BR', {
@@ -81,39 +162,103 @@ export const FinancialView = ({ shifts, onUpdateShift }: FinancialViewProps) => 
     });
   };
 
-  const pendingShifts = shifts
-    .filter(s => s.paymentStatus === 'pending')
-    .sort((a, b) => a.date.localeCompare(b.date));
-
-  const recentTransactions = [...shifts]
+  const recentTransactions = [...filteredShifts]
     .sort((a, b) => b.date.localeCompare(a.date))
     .slice(0, 10);
 
-  const togglePaymentStatus = (shiftId: string, currentStatus: string) => {
-    onUpdateShift(shiftId, { 
-      paymentStatus: currentStatus === 'received' ? 'pending' : 'received' 
-    });
-  };
-
   return (
     <div className="space-y-6 animate-in fade-in duration-500">
-      {/* Header */}
-      <div>
-        <h1 className="text-3xl font-bold text-white mb-2">Financeiro</h1>
-        <p className="text-slate-400">Acompanhe seus ganhos e pagamentos</p>
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div>
+          <h1 className="text-3xl font-bold text-white mb-2">Financeiro</h1>
+          <p className="text-slate-400">
+            Gestão financeira anual de {selectedYear}
+          </p>
+        </div>
+        
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+          {years.length > 1 && (
+            <div className="flex items-center gap-2 bg-slate-800/50 p-1 rounded-lg border border-slate-700 overflow-x-auto">
+              <Tabs value={selectedYear} onValueChange={setSelectedYear} className="w-auto">
+                <TabsList className="bg-transparent h-8">
+                  {years.map(year => (
+                    <TabsTrigger 
+                      key={year} 
+                      value={year}
+                      className="text-xs data-[state=active]:bg-blue-600 data-[state=active]:text-white px-3"
+                    >
+                      {year}
+                    </TabsTrigger>
+                  ))}
+                </TabsList>
+              </Tabs>
+            </div>
+          )}
+        </div>
       </div>
 
-      {/* Summary Cards */}
+      <Card className="bg-slate-800/50 border-slate-700 shadow-xl overflow-hidden">
+        <CardHeader className="border-b border-slate-700 bg-slate-800/30">
+          <CardTitle className="text-lg flex items-center gap-2 text-white font-bold">
+            Configuração de Metas Mensais
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="p-6">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-6 items-end">
+            <div className="space-y-2">
+              <Label className="text-slate-300">Mês</Label>
+              <Select value={selectedMonth} onValueChange={setSelectedMonth}>
+                <SelectTrigger className="bg-slate-900 border-slate-700 text-white h-11">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent className="bg-slate-900 border-slate-700 text-white">
+                  {MONTHS.map((month, idx) => (
+                    <SelectItem key={idx} value={idx.toString()}>{month}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label className="text-slate-300">Valor Esperado para o Mês</Label>
+              <div className="relative">
+                <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
+                <Input
+                  type="number"
+                  value={currentTarget.expected || ''}
+                  onChange={(e) => handleTargetChange('expected', e.target.value)}
+                  placeholder="0,00"
+                  className="bg-slate-900 border-slate-700 text-white h-11 pl-9 focus:border-blue-500"
+                />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label className="text-slate-300">Valor Realmente Recebido</Label>
+              <div className="relative">
+                <CheckCircle2 className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
+                <Input
+                  type="number"
+                  value={currentTarget.actual || ''}
+                  onChange={(e) => handleTargetChange('actual', e.target.value)}
+                  placeholder="0,00"
+                  className="bg-slate-900 border-slate-700 text-white h-11 pl-9 focus:border-emerald-500"
+                />
+              </div>
+            </div>
+            <div className="flex items-center gap-2 h-11 px-4 rounded-lg bg-blue-500/10 border border-blue-500/20 text-blue-400 text-sm font-medium">
+              <TrendingUp className="w-4 h-4" />
+              Pendente: {formatCurrency(Math.max(0, currentTarget.expected - currentTarget.actual))}
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <Card className="bg-gradient-to-br from-emerald-600 to-teal-600 border-0 shadow-lg">
           <CardContent className="p-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-emerald-100 text-sm font-medium">Total Recebido</p>
-                <p className="text-3xl font-bold text-white mt-2">{formatCurrency(totalReceived)}</p>
-                <p className="text-emerald-200 text-sm mt-1">
-                  {shifts.filter(s => s.paymentStatus === 'received').length} plantões
-                </p>
+                <p className="text-emerald-100 text-sm font-medium">Total Recebido ({selectedYear})</p>
+                <p className="text-3xl font-bold text-white mt-2">{formatCurrency(yearMetrics.received)}</p>
               </div>
               <div className="w-14 h-14 rounded-2xl bg-white/20 flex items-center justify-center">
                 <CheckCircle2 className="w-7 h-7 text-white" />
@@ -126,11 +271,8 @@ export const FinancialView = ({ shifts, onUpdateShift }: FinancialViewProps) => 
           <CardContent className="p-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-amber-100 text-sm font-medium">Total Pendente</p>
-                <p className="text-3xl font-bold text-white mt-2">{formatCurrency(totalPending)}</p>
-                <p className="text-amber-200 text-sm mt-1">
-                  {shifts.filter(s => s.paymentStatus === 'pending').length} plantões
-                </p>
+                <p className="text-amber-100 text-sm font-medium">Total Pendente ({selectedYear})</p>
+                <p className="text-3xl font-bold text-white mt-2">{formatCurrency(yearMetrics.pending)}</p>
               </div>
               <div className="w-14 h-14 rounded-2xl bg-white/20 flex items-center justify-center">
                 <Clock className="w-7 h-7 text-white" />
@@ -143,9 +285,8 @@ export const FinancialView = ({ shifts, onUpdateShift }: FinancialViewProps) => 
           <CardContent className="p-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-blue-100 text-sm font-medium">Total Geral</p>
-                <p className="text-3xl font-bold text-white mt-2">{formatCurrency(totalAmount)}</p>
-                <p className="text-blue-200 text-sm mt-1">{shifts.length} plantões</p>
+                <p className="text-blue-100 text-sm font-medium">Meta Anual ({selectedYear})</p>
+                <p className="text-3xl font-bold text-white mt-2">{formatCurrency(yearMetrics.total)}</p>
               </div>
               <div className="w-14 h-14 rounded-2xl bg-white/20 flex items-center justify-center">
                 <DollarSign className="w-7 h-7 text-white" />
@@ -155,31 +296,19 @@ export const FinancialView = ({ shifts, onUpdateShift }: FinancialViewProps) => 
         </Card>
       </div>
 
-      {/* Charts Row */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Pie Chart - Payment Status */}
         <Card className="bg-slate-800/50 border-slate-700">
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-white">
               <PieChart className="w-5 h-5 text-emerald-400" />
-              Status dos Pagamentos
+              Progresso Anual
             </CardTitle>
           </CardHeader>
           <CardContent>
             <div className="flex items-center justify-center gap-8">
-              {/* Simple pie chart visualization */}
               <div className="relative w-40 h-40">
                 <svg viewBox="0 0 100 100" className="w-full h-full -rotate-90">
-                  {/* Background circle */}
-                  <circle
-                    cx="50"
-                    cy="50"
-                    r="40"
-                    fill="none"
-                    stroke="#334155"
-                    strokeWidth="20"
-                  />
-                  {/* Received arc */}
+                  <circle cx="50" cy="50" r="40" fill="none" stroke="#334155" strokeWidth="20" />
                   <circle
                     cx="50"
                     cy="50"
@@ -187,10 +316,9 @@ export const FinancialView = ({ shifts, onUpdateShift }: FinancialViewProps) => 
                     fill="none"
                     stroke="#10b981"
                     strokeWidth="20"
-                    strokeDasharray={`${receivedPercentage * 2.51} 251.2`}
+                    strokeDasharray={`${yearMetrics.receivedPercentage * 2.51} 251.2`}
                     className="transition-all duration-700"
                   />
-                  {/* Pending arc */}
                   <circle
                     cx="50"
                     cy="50"
@@ -198,33 +326,32 @@ export const FinancialView = ({ shifts, onUpdateShift }: FinancialViewProps) => 
                     fill="none"
                     stroke="#f59e0b"
                     strokeWidth="20"
-                    strokeDasharray={`${pendingPercentage * 2.51} 251.2`}
-                    strokeDashoffset={`${-receivedPercentage * 2.51}`}
+                    strokeDasharray={`${yearMetrics.pendingPercentage * 2.51} 251.2`}
+                    strokeDashoffset={`${-yearMetrics.receivedPercentage * 2.51}`}
                     className="transition-all duration-700"
                   />
                 </svg>
                 <div className="absolute inset-0 flex items-center justify-center">
                   <div className="text-center">
-                    <p className="text-2xl font-bold text-white">{Math.round(receivedPercentage)}%</p>
-                    <p className="text-xs text-slate-400">Recebido</p>
+                    <p className="text-2xl font-bold text-white">{Math.round(yearMetrics.receivedPercentage)}%</p>
+                    <p className="text-xs text-slate-400">Batido</p>
                   </div>
                 </div>
               </div>
 
-              {/* Legend */}
               <div className="space-y-4">
                 <div className="flex items-center gap-3">
                   <div className="w-4 h-4 rounded-full bg-emerald-500" />
                   <div>
                     <p className="text-white font-medium">Recebido</p>
-                    <p className="text-sm text-slate-400">{formatCurrency(totalReceived)}</p>
+                    <p className="text-sm text-slate-400">{formatCurrency(yearMetrics.received)}</p>
                   </div>
                 </div>
                 <div className="flex items-center gap-3">
                   <div className="w-4 h-4 rounded-full bg-amber-500" />
                   <div>
                     <p className="text-white font-medium">Pendente</p>
-                    <p className="text-sm text-slate-400">{formatCurrency(totalPending)}</p>
+                    <p className="text-sm text-slate-400">{formatCurrency(yearMetrics.pending)}</p>
                   </div>
                 </div>
               </div>
@@ -232,37 +359,55 @@ export const FinancialView = ({ shifts, onUpdateShift }: FinancialViewProps) => 
           </CardContent>
         </Card>
 
-        {/* Bar Chart - Monthly Income */}
         <Card className="bg-slate-800/50 border-slate-700">
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-white">
               <BarChart3 className="w-5 h-5 text-blue-400" />
-              Receita Mensal
+              Receita Mensal (Real vs Meta)
             </CardTitle>
           </CardHeader>
           <CardContent>
             {monthlyData.length === 0 ? (
-              <p className="text-slate-400 text-center py-8">Sem dados suficientes</p>
+              <p className="text-slate-400 text-center py-8">Configure as metas mensais acima</p>
             ) : (
               <div className="flex items-end gap-2 h-48">
                 {monthlyData.map((data, idx) => (
-                  <div key={idx} className="flex-1 flex flex-col items-center gap-2">
-                    <div className="w-full flex flex-col gap-1" style={{ height: '180px' }}>
-                      <div className="flex-1 flex flex-col justify-end">
-                        {/* Received bar */}
-                        <div
-                          className="w-full bg-emerald-500 rounded-t transition-all duration-500"
-                          style={{ height: `${(data.received / maxMonthlyTotal) * 100}%` }}
-                        />
-                        {/* Pending bar */}
-                        <div
-                          className="w-full bg-amber-500 rounded-b transition-all duration-500"
-                          style={{ height: `${(data.pending / maxMonthlyTotal) * 100}%` }}
-                        />
+                  <Tooltip key={idx}>
+                    <TooltipTrigger asChild>
+                      <div className="flex-1 flex flex-col items-center gap-2 cursor-pointer group">
+                        <div className="w-full flex flex-col gap-1 hover:scale-x-105 transition-transform" style={{ height: '180px' }}>
+                          <div className="flex-1 flex flex-col justify-end">
+                            <div
+                              className="w-full bg-emerald-500 rounded-t transition-all duration-500"
+                              style={{ height: `${(data.received / maxMonthlyTotal) * 100}%` }}
+                            />
+                            <div
+                              className="w-full bg-amber-500 rounded-b transition-all duration-500"
+                              style={{ height: `${(data.pending / maxMonthlyTotal) * 100}%` }}
+                            />
+                          </div>
+                        </div>
+                        <span className="text-xs text-slate-400 capitalize group-hover:text-white transition-colors">{data.month}</span>
                       </div>
-                    </div>
-                    <span className="text-xs text-slate-400 capitalize">{data.month}</span>
-                  </div>
+                    </TooltipTrigger>
+                    <TooltipContent side="top" className="bg-slate-900 border-slate-700 text-white p-3 shadow-xl">
+                      <div className="space-y-1">
+                        <p className="font-bold text-sm border-b border-slate-700 pb-1 mb-1 capitalize">{data.month}</p>
+                        <div className="flex items-center justify-between gap-4 text-xs">
+                          <span className="text-emerald-400">Recebido:</span>
+                          <span className="font-mono">{formatCurrency(data.received)}</span>
+                        </div>
+                        <div className="flex items-center justify-between gap-4 text-xs">
+                          <span className="text-amber-400">Pendente:</span>
+                          <span className="font-mono">{formatCurrency(data.pending)}</span>
+                        </div>
+                        <div className="flex items-center justify-between gap-4 text-sm font-bold pt-1 border-t border-slate-700 mt-1">
+                          <span>Meta:</span>
+                          <span className="font-mono">{formatCurrency(data.total)}</span>
+                        </div>
+                      </div>
+                    </TooltipContent>
+                  </Tooltip>
                 ))}
               </div>
             )}
@@ -270,107 +415,57 @@ export const FinancialView = ({ shifts, onUpdateShift }: FinancialViewProps) => 
         </Card>
       </div>
 
-      {/* Two column layout */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Pending Payments */}
-        <Card className="bg-slate-800/50 border-slate-700">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-white">
-              <Clock className="w-5 h-5 text-amber-400" />
-              Pagamentos Pendentes
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            {pendingShifts.length === 0 ? (
-              <div className="text-center py-8">
-                <CheckCircle2 className="w-12 h-12 text-emerald-400 mx-auto mb-3" />
-                <p className="text-slate-400">Nenhum pagamento pendente!</p>
-              </div>
-            ) : (
-              <div className="space-y-3 max-h-80 overflow-y-auto">
-                {pendingShifts.map((shift) => (
-                  <div
-                    key={shift.id}
-                    className="flex items-center gap-4 p-3 rounded-xl bg-slate-700/50 hover:bg-slate-700 transition-colors"
-                  >
-                    <div className="flex-1 min-w-0">
-                      <p className="text-white font-medium truncate">{shift.location}</p>
-                      <div className="flex items-center gap-2 text-sm text-slate-400">
-                        <Calendar className="w-3.5 h-3.5" />
-                        <span>{formatDate(shift.date)}</span>
-                      </div>
+      <Card className="bg-slate-800/50 border-slate-700">
+        <CardHeader className="flex flex-row items-center justify-between">
+          <CardTitle className="flex items-center gap-2 text-white font-bold">
+            Registro de Plantões
+          </CardTitle>
+          <div className="bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 min-w-[200px]">
+            <Select value={selectedHospital} onValueChange={setSelectedHospital}>
+              <SelectTrigger className="bg-transparent border-0 text-white text-xs h-6 focus:ring-0 p-0">
+                <div className="flex items-center gap-2">
+                  <MapPin className="w-3 h-3 text-slate-400" />
+                  <SelectValue placeholder="Hospital" />
+                </div>
+              </SelectTrigger>
+              <SelectContent className="bg-slate-900 border-slate-700 text-white">
+                {hospitals.map(hospital => (
+                  <SelectItem key={hospital} value={hospital} className="text-xs">
+                    {hospital}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {recentTransactions.length === 0 ? (
+            <p className="text-slate-400 text-center py-8">Nenhum plantão registrado para este filtro</p>
+          ) : (
+            <div className="space-y-3 max-h-[400px] overflow-y-auto pr-2">
+              {recentTransactions.map((shift) => (
+                <div
+                  key={shift.id}
+                  className="flex items-center justify-between p-4 rounded-xl bg-slate-700/30 border border-slate-700/50 hover:border-slate-600 transition-all"
+                >
+                  <div className="flex items-center gap-4">
+                    <div className="w-10 h-10 rounded-full flex items-center justify-center bg-slate-800 text-slate-400">
+                      <Calendar className="w-5 h-5" />
                     </div>
-                    <div className="text-right">
-                      <p className="text-amber-400 font-semibold">{formatCurrency(shift.paymentAmount)}</p>
-                      <button
-                        onClick={() => togglePaymentStatus(shift.id, shift.paymentStatus)}
-                        className="text-xs text-emerald-400 hover:text-emerald-300 transition-colors"
-                      >
-                        Marcar recebido
-                      </button>
+                    <div>
+                      <p className="text-white font-medium">{shift.location}</p>
+                      <p className="text-sm text-slate-400">{formatDate(shift.date)} • {shift.startTime} - {shift.endTime}</p>
                     </div>
                   </div>
-                ))}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* Recent Transactions */}
-        <Card className="bg-slate-800/50 border-slate-700">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-white">
-              <TrendingUp className="w-5 h-5 text-emerald-400" />
-              Transações Recentes
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            {recentTransactions.length === 0 ? (
-              <p className="text-slate-400 text-center py-8">Nenhuma transação</p>
-            ) : (
-              <div className="space-y-3 max-h-80 overflow-y-auto">
-                {recentTransactions.map((shift) => (
-                  <div
-                    key={shift.id}
-                    className="flex items-center gap-4 p-3 rounded-xl bg-slate-700/50"
-                  >
-                    <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${
-                      shift.paymentStatus === 'received' 
-                        ? 'bg-emerald-500/20' 
-                        : 'bg-amber-500/20'
-                    }`}>
-                      {shift.paymentStatus === 'received' 
-                        ? <TrendingUp className="w-5 h-5 text-emerald-400" />
-                        : <TrendingDown className="w-5 h-5 text-amber-400" />
-                      }
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-white font-medium truncate">{shift.location}</p>
-                      <p className="text-sm text-slate-400">{formatDate(shift.date)}</p>
-                    </div>
-                    <div className="text-right">
-                      <p className={`font-semibold ${
-                        shift.paymentStatus === 'received' ? 'text-emerald-400' : 'text-amber-400'
-                      }`}>
-                        {formatCurrency(shift.paymentAmount)}
-                      </p>
-                      <Badge
-                        className={`text-xs ${
-                          shift.paymentStatus === 'received' 
-                            ? 'bg-emerald-500/20 text-emerald-400' 
-                            : 'bg-amber-500/20 text-amber-400'
-                        }`}
-                      >
-                        {shift.paymentStatus === 'received' ? 'Recebido' : 'Pendente'}
-                      </Badge>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      </div>
+                  <Badge className="bg-slate-800 text-slate-400 border-slate-700">
+                    Registrado
+                  </Badge>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
     </div>
   );
 };
